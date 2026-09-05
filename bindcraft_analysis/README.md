@@ -16,9 +16,9 @@ bindcraft_analysis/
 │   ├── CHANGES.md                  # detailed writeup of the 4 modifications
 │   └── original_vs_modified.diff
 ├── notebooks/
-│   ├── Initial_peak_of_sequence_matrix_and_analysis_of_convergence_of_the_sequence_matrix__single_trajectory__.ipynb
-│   ├── Different_length_peptide_trjectories_analysis.ipynb
-│   └── Fixed_length_trajectories.ipynb
+│   ├── 01_single_trajectory_convergence.ipynb
+│   ├── 02_variable_length_population_analysis.ipynb
+│   └── 03_fixed_length_analysis_comparipssm.ipynb
 └── results/
     ├── figures/
     └── tables/
@@ -43,7 +43,7 @@ Every patched trajectory run produces three extra artifacts per design (`_seqmat
 
 ### 1. Does the interface actually keep changing? — single-trajectory convergence
 
-**Notebook:** `Initial_peak_of_sequence_matrix_and_analysis_of_convergence_of_the_sequence_matrix__single_trajectory__.ipynb`
+**Notebook:** `01_single_trajectory_convergence.ipynb`
 
 Starting point: pick one trajectory and look at its logged sequence matrix (`iterations × length × 20`) directly — heatmaps of the per-position amino acid logits at different iterations, with the known interface residues highlighted.
 
@@ -58,7 +58,7 @@ That observation, combined with noticing that BindCraft's acceptance filters/thr
 
 ### 2. Do good and bad trajectories look different across a full run?
 
-**Notebook:** `Different_length_peptide_trjectories_analysis.ipynb`
+**Notebook:** `02_variable_length_population_analysis.ipynb`
 
 Ran a full BindCraft campaign (~100 designs, spanning a range of peptide lengths) and labeled every trajectory:
 - **Good** — the hallucination process produced a final design that passed BindCraft's acceptance filters
@@ -76,7 +76,7 @@ Because the varying peptide lengths required zero-padding to compare trajectorie
 
 ### 3. Fixed-length run, broader characterization, and CompariPSSM
 
-**Notebook:** `Fixed_length_trajectories.ipynb`
+**Notebook:** `03_fixed_length_analysis_comparipssm.ipynb`
 
 Reran the same analysis on a BindCraft campaign using a **single fixed peptide length**, removing the padding confound, and extended the characterization:
 - per-stage timing (now 5 stages: 1, 1B, 2, 3, 4) vs. Good/Bad — again no clear separation
