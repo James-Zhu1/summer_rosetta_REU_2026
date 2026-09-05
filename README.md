@@ -25,9 +25,9 @@ summer-research-2026/
 │   │   ├── CHANGES.md
 │   │   └── original_vs_modified.diff
 │   ├── notebooks/
-│   │   ├── Initial_peak_of_sequence_matrix_and_analysis_of_convergence_of_the_sequence_matrix__single_trajectory__.ipynb
-│   │   ├── Different_length_peptide_trjectories_analysis.ipynb
-│   │   └── Fixed_length_trajectories.ipynb
+│   │   ├── 01_single_trajectory_convergence.ipynb
+│   │   ├── 02_variable_length_population_analysis.ipynb
+│   │   └── 03_fixed_length_analysis_comparipssm.ipynb
 │   └── results/
 │       ├── figures/
 │       └── tables/
