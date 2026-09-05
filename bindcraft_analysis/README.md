@@ -63,6 +63,7 @@ That observation, combined with noticing that BindCraft's acceptance filters/thr
 Ran a full BindCraft campaign (~100 designs, spanning a range of peptide lengths) and labeled every trajectory:
 - **Good** — the hallucination process produced a final design that passed BindCraft's acceptance filters
 - **Bad** — completed the full hallucination process but never produced an accepted design
+- **Unknown** — did not complete the full hallucination process and did not produced an accepted final design
 
 For every trajectory, per-stage timing, and the full sequence-matrix, were pulled in and compared by label:
 - **Timing:** per-stage (Stage 1–4) wall-clock time vs. design length, colored by Good/Bad — no clear separation between the two groups.
