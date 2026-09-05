@@ -45,7 +45,7 @@ Every patched trajectory run produces three extra artifacts per design (`_seqmat
 
 **Notebook:** `01_single_trajectory_convergence.ipynb`
 
-Starting point: pick one trajectory and look at its logged sequence matrix (`iterations × length × 20`) directly — heatmaps of the per-position amino acid logits at different iterations, with the known interface residues highlighted.
+Starting point: pick one trajectory and look at its logged sequence matrix (`iterations × length × 19` as we forbidden `cysteine`) directly — heatmaps of the per-position amino acid logits at different iterations, with the known interface residues highlighted.
 
 To go beyond eyeballing heatmaps, we measured how much the interface residues' identity actually changes over the course of hallucination:
 - softmax the logits at the interface positions into probability distributions, and compute the (L1) distance between each iteration and the **final** iteration
