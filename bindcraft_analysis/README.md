@@ -21,6 +21,16 @@ bindcraft_analysis/
 │   └── 03_fixed_length_analysis_comparipssm.ipynb
 └── results/
     ├── figures/
+    │   ├── 01_seqmatrix_heatmap_by_iteration.png.png
+    │   ├── 01_interface_argmax_mismatch_count.png
+    │   ├── 02_stage_time_vs_length.png
+    │   ├── 02_pca_individual_trajectory.png
+    │   ├── 02_pca_population_shared_space.png
+    │   ├── 02_pca_design_space_flattened.png
+    │   ├── 03_pca_population_shared_space.png
+    │   ├── 03_umap_population_shared_space.png
+    │   ├── 03_comparipssm_clustermap.png
+    │   └── 03_comparipssm_boxplot_by_pairtype.png
     └── tables/
 ```
 
@@ -45,32 +55,47 @@ Every patched trajectory run produces three extra artifacts per design (`_seqmat
 
 **Notebook:** `01_single_trajectory_convergence.ipynb`
 
-Starting point: pick one trajectory and look at its logged sequence matrix (`iterations × length × 19` as we forbidden `cysteine`) directly — heatmaps of the per-position amino acid logits at different iterations, with the known interface residues highlighted.
+Starting point: pick one trajectory and look at its logged sequence matrix (`iterations × length × 20`) directly — heatmaps of the per-position amino acid logits at different iterations, with the known interface residues highlighted.
+
+![Sequence matrix heatmap by iteration](results/figures/01_seqmatrix_heatmap_by_iteration.png.png)
 
 To go beyond eyeballing heatmaps, we measured how much the interface residues' identity actually changes over the course of hallucination:
 - softmax the logits at the interface positions into probability distributions, and compute the (L1) distance between each iteration and the **final** iteration
 - same comparison between **consecutive** iterations
 - count how many interface residues have a different argmax (most-probable amino acid) at each iteration vs. the final sequence
 
+![Interface argmax mismatch count over iterations](results/figures/01_interface_argmax_mismatch_count.png)
+
 **Finding:** the interface residues stop changing much well before the hallucination process finishes — most of the movement toward the final interface identity happens in an early "peak," after which the interface is largely locked in relative to what the trajectory eventually converges to. In other words, BindCraft may not need to run the full number of hallucination steps to arrive at its final interface residues.
 
 That observation, combined with noticing that BindCraft's acceptance filters/thresholds are mostly hardcoded, raised the question: **could trajectory behavior itself be used to build more dynamic filters** (e.g. early-stopping or acceptance criteria based on when/how a trajectory converges) instead of fixed, one-size-fits-all thresholds? Testing that idea required looking at many trajectories at once, and seeing whether "good" and "bad" trajectories look different in some reduced representation — which motivated the next step.
 
-### 2. Do good and bad trajectories look different across a full run?
+### 2. Do good, bad, and unknown trajectories look different across a full run?
 
 **Notebook:** `02_variable_length_population_analysis.ipynb`
 
 Ran a full BindCraft campaign (~100 designs, spanning a range of peptide lengths) and labeled every trajectory:
 - **Good** — the hallucination process produced a final design that passed BindCraft's acceptance filters
 - **Bad** — completed the full hallucination process but never produced an accepted design
-- **Unknown** — did not complete the full hallucination process and did not produced an accepted final design
+- **Unknown** — did not finish the hallucination process, and also never produced an accepted final design
 
 For every trajectory, per-stage timing, and the full sequence-matrix, were pulled in and compared by label:
-- **Timing:** per-stage (Stage 1–4) wall-clock time vs. design length, colored by Good/Bad — no clear separation between the two groups.
+- **Timing:** per-stage (Stage 1–4) wall-clock time vs. design length, colored by Good/Bad/Unknown — no clear separation between the groups.
+
+  ![Stage time vs. design length](results/figures/02_stage_time_vs_length.png)
+
 - **PCA on sequence trajectories:**
   - individual trajectories projected into their own 2D PCA space — no distinguishing shape between good and bad
-  - all trajectories projected into a **shared** PCA space (sequence matrices zero-padded to a common length, since peptide lengths varied) — good and bad trajectories intermixed
-  - each *entire* trajectory flattened into a single point ("design space" PCA) — still no clear good/bad clustering
+
+    ![Individual trajectory PCA](results/figures/02_pca_individual_trajectory.png)
+
+  - all trajectories projected into a **shared** PCA space (sequence matrices zero-padded to a common length, since peptide lengths varied) — good, bad, and unknown trajectories intermixed
+
+    ![Population PCA, shared space](results/figures/02_pca_population_shared_space.png)
+
+  - each *entire* trajectory flattened into a single point ("design space" PCA) — still no clear clustering by status
+
+    ![Design space PCA, flattened trajectories](results/figures/02_pca_design_space_flattened.png)
 
 Because the varying peptide lengths required zero-padding to compare trajectories in a shared space, it wasn't clear whether the lack of signal was real or an artifact of the padding. That motivated repeating everything with a fixed design length.
 
@@ -79,16 +104,24 @@ Because the varying peptide lengths required zero-padding to compare trajectorie
 **Notebook:** `03_fixed_length_analysis_comparipssm.ipynb`
 
 Reran the same analysis on a BindCraft campaign using a **single fixed peptide length**, removing the padding confound, and extended the characterization:
-- per-stage timing (now 5 stages: 1, 1B, 2, 3, 4) vs. Good/Bad — again no clear separation
+- per-stage timing (now 5 stages: 1, 1B, 2, 3, 4) vs. Good/Bad/Unknown — again no clear separation
 - loss trajectories (total loss and individual loss terms) per design — no separation
 - PCA on sequence-logit trajectories, both per-design and in a shared population space — no separation
+
+  ![Population PCA, fixed length](results/figures/03_pca_population_shared_space.png)
+
 - additional global PCA variants: sequence + all scalar metrics combined, metrics only, and interface-metrics only — none of these separated good from bad either
 - UMAP embeddings (individual and population) as an alternative to PCA — same result, no clear separation
 
-None of timing, loss, PCA, or UMAP produced a clean good/bad signal, so the analysis moved to a more direct sequence-level comparison: **[CompariPSSM](https://github.com/ifigenia-t/CompariPSSM)**.
+  ![Population UMAP, fixed length](results/figures/03_umap_population_shared_space.png)
+
+None of timing, loss, PCA, or UMAP produced a clean separation by status, so the analysis moved to a more direct sequence-level comparison: **[CompariPSSM](https://github.com/ifigenia-t/CompariPSSM)**.
 - Each design's logged sequence matrix was converted into a per-iteration PSSM (position-specific scoring matrix), saved as JSON, and tagged by its Good/Bad/Unknown status.
 - CompariPSSM was used to compute pairwise dissimilarity (IWD) scores between iterations across pairs of designs.
 - Results were visualized as heatmaps and clustermaps (sorted/colored by status), and as boxplots of dissimilarity score distributions grouped by pair type (Good–Good, Good–Bad, Bad–Bad, etc.) to check whether good designs are more mutually self-similar than bad ones.
+
+  ![CompariPSSM clustermap](results/figures/03_comparipssm_clustermap.png)
+  ![CompariPSSM dissimilarity by pair type](results/figures/03_comparipssm_boxplot_by_pairtype.png)
 
 ---
 
