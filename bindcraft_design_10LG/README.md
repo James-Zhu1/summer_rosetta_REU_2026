@@ -75,8 +75,6 @@ Three separate BindCraft settings files define the trajectory parameters used ac
 | [`config/10LG_2.json`](config/10LG_2.json) | `10LG_2/` | 84, 152, 159  | 10–25 | 100 |
 | [`config/10LG_3.json`](config/10LG_3.json) | `10LG_3/` | none — unrestricted search | 10–25 | 100 |
 
-(The cluster output folder names above come directly from each config's `design_path` field and don't line up numerically with the local config filenames — that's expected, not an error, since the configs were renamed locally after the runs.)
-
 Across these runs, thousands of independent design trajectories were generated and logged, forming the raw pool that was then computationally filtered.
 
 ---
@@ -85,7 +83,6 @@ Across these runs, thousands of independent design trajectories were generated a
 
 ### The Design Conflict: What the Pocket Wants vs. What the Filter Rejects
 
-**The problem.** Rgg3 links quorum sensing to virulence, making it a promising anti-virulence target — but its SHP-binding pocket is deeply buried, and a deeply buried pocket naturally favors a hydrophobic surface to bind against.
 
 **The conflict.** Binding that pocket well requires a peptide with substantial hydrophobic character at the interface. But because these binders are so short (10–25 residues), most of a peptide's residues *are* the surface — there isn't much scaffold to bury hydrophobic residues away from solvent the way a larger protein binder could. So a peptide built to satisfy the pocket ends up looking, overall, like a highly hydrophobic peptide — exactly what BindCraft's default filters are tuned to reject (they penalize high surface hydrophobicity as a proxy for aggregation/solubility risk).
 
