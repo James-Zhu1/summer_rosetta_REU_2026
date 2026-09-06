@@ -36,7 +36,6 @@ summer-research-2026/
 │   ├── README.md
 │   ├── config/
 │   ├── raw_designs/
-│   ├── filtered_designs/
 │   └── selected_designs/
 │       └── structures/
 │
