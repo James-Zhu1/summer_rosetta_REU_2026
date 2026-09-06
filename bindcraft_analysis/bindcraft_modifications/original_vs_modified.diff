@@ -1,0 +1,191 @@
+--- a/design/colabdesign_utils.py (original, upstream BindCraft)
++++ b/design/colabdesign_utils.py (patched)
+@@ -2,7 +2,7 @@
+ ############## ColabDesign functions
+ ####################################
+ ### Import dependencies
+-import os, re, shutil, math, pickle
++import os, re, shutil, math, pickle, csv
+ import matplotlib.pyplot as plt
+ import numpy as np
+ import jax
+@@ -17,6 +17,44 @@
+ from .pyrosetta_utils import pr_relax, align_pdbs
+ from .generic_utils import update_failures
+ 
++
++import time
++from contextlib import contextmanager
++ 
++ 
++@contextmanager
++def timed(name, store):
++    """Time the wrapped block and add the elapsed seconds to store[name]."""
++    t0 = time.perf_counter()
++    try:
++        yield
++    finally:
++        dt = time.perf_counter() - t0
++        store[name] = store.get(name, 0.0) + dt
++        print(f"  [timing] {name}: {dt:.1f}s")
++ 
++ 
++def print_stage_times(store, save_path=None):
++    """Print a per-stage timing summary (and optionally write it to save_path)."""
++    if not store:
++        return
++    total = sum(store.values())
++    lines = ["", "=== Hallucination stage timing ==="]
++    for k, v in store.items():
++        pct = (100 * v / total) if total else 0.0
++        lines.append(f"  {k:<22} {v:8.1f}s  ({pct:4.1f}%)")
++    lines.append(f"  {'TOTAL':<22} {total:8.1f}s")
++    print("\n".join(lines))
++    if save_path:
++        try:
++            with open(save_path, "w") as fh:
++                fh.write("\n".join(lines[1:]) + "\n")   # skip leading blank line
++        except OSError as e:
++            print(f"  [timing] could not write {save_path}: {e}")
++
++
++
++
+ # hallucinate a binder
+ def binder_hallucination(design_name, starting_pdb, chain, target_hotspot_residues, length, seed, helicity_value, design_models, advanced_settings, design_paths, failure_csv):
+     model_pdb_path = os.path.join(design_paths["Trajectory"], design_name+".pdb")
+@@ -64,11 +102,63 @@
+ 
+     # add the helicity loss
+     add_helix_loss(af_model, helicity_value)
++    
++    output_folder = os.path.dirname(design_paths["Trajectory"])   # main output folder, not Trajectory/
++    seq_matrix_log = []
++    seq_matrix_path = os.path.join(output_folder, design_name + "_seqmatrix.npy")
++
++    def _log_seq_matrix(af):
++        mat = np.asarray(af.aux["seq"]["logits"])[0]        # shape (length, 20)
++        seq_matrix_log.append(mat.copy())
++        np.save(seq_matrix_path, np.stack(seq_matrix_log))  # rewrite full stack each iter
++        if len(seq_matrix_log) == 1:
++            print(f"Logging binder sequence matrix each iter -> {seq_matrix_path}")
++
++    af_model._callbacks["design"]["post"].append(_log_seq_matrix)
++
++    
++        # ---- save all trajectory loss terms every iteration ----
++    loss_log_path = os.path.join(output_folder, design_name + "_loss_log.csv")
++    loss_log_rows = []
++    loss_log_fields = ["logged_row", "iter", "total_loss"]
++
++    def _loss_to_float(x):
++        try:
++            return float(np.asarray(x).mean())
++        except Exception:
++            return str(x)
++
++    def _log_losses(af):
++        row = {
++            "logged_row": len(loss_log_rows),
++            "iter": getattr(af, "_k", None),
++            "total_loss": _loss_to_float(af.aux.get("loss", np.nan)),
++        }
++
++        # Individual loss terms: pae, plddt, i_pae, con, i_con, helix, rg, etc.
++        for k, v in af.aux.get("losses", {}).items():
++            row[k] = _loss_to_float(v)
++            if k not in loss_log_fields:
++                loss_log_fields.append(k)
++
++        loss_log_rows.append(row)
++
++        # Rewrite each iteration so the file is still useful if the run stops early
++        with open(loss_log_path, "w", newline="") as f:
++            writer = csv.DictWriter(f, fieldnames=loss_log_fields)
++            writer.writeheader()
++            writer.writerows(loss_log_rows)
++
++        if len(loss_log_rows) == 1:
++            print(f"Logging trajectory losses each iter -> {loss_log_path}")
++
++    af_model._callbacks["design"]["post"].append(_log_losses)
+ 
+     # calculate the number of mutations to do based on the length of the protein
+     greedy_tries = math.ceil(length * (advanced_settings["greedy_percentage"] / 100))
+ 
+     ### start design algorithm based on selection
++    stage_times = {}
+     if advanced_settings["design_algorithm"] == '2stage':
+         # uses gradient descend to get a PSSM profile and then uses PSSM to bias the sampling of random mutations to decrease loss
+         af_model.design_pssm_semigreedy(soft_iters=advanced_settings["soft_iterations"], hard_iters=advanced_settings["greedy_iterations"], tries=greedy_tries, models=design_models, 
+@@ -94,7 +184,8 @@
+     elif advanced_settings["design_algorithm"] == '4stage':
+         # initial logits to prescreen trajectory
+         print("Stage 1: Test Logits")
+-        af_model.design_logits(iters=50, e_soft=0.9, models=design_models, num_models=1, sample_models=advanced_settings["sample_models"], save_best=True)
++        with timed("Stage 1: Logits", stage_times):
++            af_model.design_logits(iters=50, e_soft=0.9, models=design_models, num_models=1, sample_models=advanced_settings["sample_models"], save_best=True)
+ 
+         # determine pLDDT of best iteration according to lowest 'loss' value
+         initial_plddt = get_best_plddt(af_model, length)
+@@ -120,7 +211,8 @@
+             if logits_iter > 0:
+                 print("Stage 1: Additional Logits Optimisation")
+                 af_model.clear_best()
+-                af_model.design_logits(iters=logits_iter, e_soft=1, models=design_models, num_models=1, sample_models=advanced_settings["sample_models"],
++                with timed("Stage 1B: Additional Logits", stage_times):
++                    af_model.design_logits(iters=logits_iter, e_soft=1, models=design_models, num_models=1, sample_models=advanced_settings["sample_models"],
+                                     ramp_recycles=False, save_best=True)
+                 af_model._tmp["seq_logits"] = af_model.aux["seq"]["logits"]
+                 logit_plddt = get_best_plddt(af_model, length)
+@@ -132,7 +224,8 @@
+             if advanced_settings["temporary_iterations"] > 0:
+                 print("Stage 2: Softmax Optimisation")
+                 af_model.clear_best()
+-                af_model.design_soft(advanced_settings["temporary_iterations"], e_temp=1e-2, models=design_models, num_models=1,
++                with timed("Stage 2: Softmax", stage_times):
++                    af_model.design_soft(advanced_settings["temporary_iterations"], e_temp=1e-2, models=design_models, num_models=1,
+                                     sample_models=advanced_settings["sample_models"], ramp_recycles=False, save_best=True)
+                 softmax_plddt = get_best_plddt(af_model, length)
+             else:
+@@ -147,7 +240,8 @@
+                 if advanced_settings["hard_iterations"] > 0:
+                     af_model.clear_best()
+                     print("Stage 3: One-hot Optimisation")
+-                    af_model.design_hard(advanced_settings["hard_iterations"], temp=1e-2, models=design_models, num_models=1,
++                    with timed("Stage 3: One-hot", stage_times):
++                        af_model.design_hard(advanced_settings["hard_iterations"], temp=1e-2, models=design_models, num_models=1,
+                                     sample_models=advanced_settings["sample_models"], dropout=False, ramp_recycles=False, save_best=True)
+                     onehot_plddt = get_best_plddt(af_model, length)
+ 
+@@ -156,7 +250,8 @@
+                     print("One-hot trajectory pLDDT good, continuing: "+str(onehot_plddt))
+                     if advanced_settings["greedy_iterations"] > 0:
+                         print("Stage 4: PSSM Semigreedy Optimisation")
+-                        af_model.design_pssm_semigreedy(soft_iters=0, hard_iters=advanced_settings["greedy_iterations"], tries=greedy_tries, models=design_models, 
++                        with timed("Stage 4: Semigreedy", stage_times):
++                            af_model.design_pssm_semigreedy(soft_iters=0, hard_iters=advanced_settings["greedy_iterations"], tries=greedy_tries, models=design_models, 
+                                                         num_models=1, sample_models=advanced_settings["sample_models"], ramp_models=False, save_best=True)
+ 
+                 else:
+@@ -175,9 +270,12 @@
+         print("ERROR: No valid design model selected")
+         exit()
+         return
+-
++    
+     ### save trajectory PDB
+     final_plddt = get_best_plddt(af_model, length)
++    print_stage_times(stage_times,
++                      save_path=os.path.join(os.path.dirname(design_paths["Trajectory"]),
++                                             design_name + "_stage_times.txt"))
+     af_model.save_pdb(model_pdb_path)
+     af_model.aux["log"]["terminate"] = ""
+ 
+@@ -480,4 +578,4 @@
+             plt.savefig(os.path.join(design_paths["Trajectory/Plots"], design_name+"_"+metric+".png"), dpi=150)
+             
+             # Close the figure
+-            plt.close()
+\ No newline at end of file
++            plt.close()
