@@ -1,9 +1,9 @@
 {
-    "design_path": "/stor/project/jzii2024/BindCraft/designs/10LG_4/",
+    "design_path": "/stor/project/jzii2024/BindCraft/designs/10LG_1/",
     "binder_name": "10LG",
     "starting_pdb": "/stor/project/jzii2024/BindCraft/example/10LG.pdb",
     "chains": "A",
-    "target_hotspot_residues": "",
+    "target_hotspot_residues": "84,156,272,279",
     "lengths": [10, 25],
     "number_of_final_designs": 100
 }
